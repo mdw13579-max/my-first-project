@@ -1,0 +1,263 @@
+# Create an index.html file with the memo app so the user can download and upload to GitHub.
+content = """<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>메모앱 (로컬 전용)</title>
+  <style>
+    :root { --bg:#0b0d10; --panel:#14181f; --ink:#e7eef7; --sub:#9fb3c8; --line:#263042; --pri:#4da3ff; --pri-ink:#05121e; --warn:#ff6b6b; }
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, Arial}
+    .wrap{max-width:1100px;margin:32px auto;padding:0 16px}
+    .grid{display:grid;grid-template-columns:360px 1fr;gap:16px}
+    @media (max-width:900px){ .grid{grid-template-columns:1fr} }
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+    .card h2{margin:0 0 12px 0;font-size:20px}
+    .pad{padding:16px}
+    input, textarea{width:100%;background:#0f141b;border:1px solid var(--line);color:var(--ink);padding:10px 12px;border-radius:10px;outline:none}
+    textarea{min-height:120px;resize:vertical}
+    .row{display:flex;gap:10px;align-items:center}
+    .row > * {flex:1}
+    .muted{color:var(--sub);font-size:13px}
+    .btn{appearance:none;border:1px solid var(--line);background:#111826;color:var(--ink);padding:10px 14px;border-radius:10px;cursor:pointer}
+    .btn:hover{border-color:#3a495f}
+    .btn.pri{background:var(--pri);color:var(--pri-ink);border-color:#3d8add;font-weight:700}
+    .btn.ghost{background:transparent}
+    .btn.warn{border-color:#803b3b;background:#2a1010;color:#ffb8b8}
+    .tag{display:inline-flex;gap:6px;align-items:center;background:#0e1722;border:1px solid var(--line);border-radius:999px;padding:4px 10px;margin:4px 6px 0 0;font-size:12px;color:var(--sub)}
+    .list{display:grid;gap:10px}
+    .memo{border-top:1px solid var(--line);padding:12px 0}
+    .memo:first-child{border-top:none}
+    .memo h3{margin:0 0 4px 0;font-size:17px}
+    .meta{display:flex;gap:10px;align-items:center;color:var(--sub);font-size:12px}
+    .tools{display:flex;gap:6px;margin-left:auto}
+    .searchbar{display:flex;gap:10px}
+    .pill{background:#0e1722;border:1px solid var(--line);border-radius:12px;padding:8px 10px}
+    .empty{color:var(--sub);text-align:center;padding:40px 0}
+    .kbd{font:12px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;background:#10161f;border:1px solid var(--line);border-radius:6px;padding:2px 6px;color:#b8c7da}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="row" style="justify-content:space-between;margin-bottom:16px">
+      <div>
+        <h1 style="margin:0;font-size:24px">📝 간단 메모 앱</h1>
+        <div class="muted">브라우저 <b>localStorage</b>에 저장됩니다. (동기화/로그인 없음)</div>
+      </div>
+      <div class="row" style="flex:0 0 auto">
+        <button id="exportBtn" class="btn ghost">내보내기 (.json)</button>
+        <label class="btn ghost" for="importFile">가져오기</label>
+        <input id="importFile" type="file" accept="application/json" style="display:none" />
+      </div>
+    </header>
+
+    <div class="grid">
+      <!-- 입력 패널 -->
+      <section class="card pad">
+        <h2>메모 작성</h2>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <input id="title" placeholder="제목" />
+          <textarea id="content" placeholder="내용을 입력하세요"></textarea>
+          <input id="tags" placeholder="태그 (쉼표로 구분: 예) work, idea)" />
+          <div class="row">
+            <label class="pill" style="display:flex;gap:8px;align-items:center;flex:0 0 auto">
+              <input type="checkbox" id="pinned" />
+              상단 고정
+            </label>
+            <button id="saveBtn" class="btn pri">저장 (Ctrl/⌘+Enter)</button>
+            <button id="resetBtn" class="btn ghost">초기화</button>
+          </div>
+          <div id="editHint" class="muted" style="display:none">편집 모드입니다. 저장하면 업데이트됩니다.</div>
+        </div>
+      </section>
+
+      <!-- 목록 패널 -->
+      <section class="card pad">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <h2 style="margin:0">메모 목록</h2>
+          <div class="searchbar">
+            <input id="q" placeholder="검색: 제목/내용/태그" />
+            <select id="tagFilter" class="pill">
+              <option value="">모든 태그</option>
+            </select>
+            <select id="sort" class="pill">
+              <option value="updatedDesc">정렬: 최근 수정</option>
+              <option value="createdDesc">정렬: 최근 작성</option>
+              <option value="titleAsc">정렬: 제목</option>
+            </select>
+          </div>
+        </div>
+        <div id="tagChips" style="margin-top:6px"></div>
+        <div id="list" class="list" style="margin-top:8px"></div>
+        <div id="empty" class="empty" style="display:none">메모가 없습니다. 왼쪽에서 새로 작성해보세요.</div>
+      </section>
+    </div>
+
+    <footer style="margin-top:18px" class="muted">
+      단축키: <span class="kbd">Ctrl/⌘ + Enter</span> 저장 · <span class="kbd">/</span> 포커스 이동
+    </footer>
+  </div>
+
+  <script>
+    // --- 데이터 저장소 -------------------------------------------------------
+    const KEY = "memos-v1";
+    /** @type {Array<{id:string,title:string,content:string,tags:string[],pinned:boolean,createdAt:number,updatedAt:number}>} */
+    let memos = load();
+    let editingId = null;
+
+    function load() {
+      try { return JSON.parse(localStorage.getItem(KEY) || "[]"); }
+      catch { return []; }
+    }
+    function persist() { localStorage.setItem(KEY, JSON.stringify(memos)); }
+
+    // --- DOM 참조 ------------------------------------------------------------
+    const $ = (sel)=>document.querySelector(sel);
+    const listEl = $("#list"), emptyEl=$("#empty"), tagFilterEl=$("#tagFilter"), tagChips=$("#tagChips");
+    const titleEl=$("#title"), contentEl=$("#content"), tagsEl=$("#tags"), pinnedEl=$("#pinned");
+    const saveBtn=$("#saveBtn"), resetBtn=$("#resetBtn");
+    const qEl=$("#q"), sortEl=$("#sort");
+    const importFile=$("#importFile"), exportBtn=$("#exportBtn");
+    const editHint=$("#editHint");
+
+    // --- 유틸 ----------------------------------------------------------------
+    const uid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36);
+    const fmtTime = (t)=> new Date(t).toLocaleString();
+
+    function getAllTags() {
+      const s = new Set();
+      memos.forEach(m => m.tags.forEach(t=> s.add(t)));
+      return Array.from(s).sort((a,b)=>a.localeCompare(b));
+    }
+
+    // --- 렌더링 --------------------------------------------------------------
+    function renderTagFilter() {
+      const tags = getAllTags();
+      tagFilterEl.innerHTML = '<option value="">모든 태그</option>' + tags.map(t=>`<option>${t}</option>`).join("");
+      tagChips.innerHTML = tags.map(t=>`<span class="tag">#${t}</span>`).join("");
+    }
+
+    function filtered() {
+      const q = qEl.value.trim().toLowerCase();
+      const tf = tagFilterEl.value.trim().toLowerCase();
+      let arr = memos.filter(m => {
+        const text = (m.title + " " + m.content + " " + m.tags.join(" ")).toLowerCase();
+        const okQ = q ? text.includes(q) : true;
+        const okT = tf ? m.tags.map(t=>t.toLowerCase()).includes(tf) : true;
+        return okQ && okT;
+      });
+      switch (sortEl.value) {
+        case "titleAsc": arr.sort((a,b)=>a.title.localeCompare(b.title)); break;
+        case "createdDesc": arr.sort((a,b)=>b.createdAt - a.createdAt); break;
+        default: // updatedDesc
+          arr.sort((a,b)=> (b.pinned - a.pinned) || (b.updatedAt - a.updatedAt));
+      }
+      return arr;
+    }
+
+    function renderList() {
+      const arr = filtered();
+      listEl.innerHTML = arr.map(m=>`
+        <div class="memo">
+          <div class="row" style="align-items:flex-start">
+            <div style="flex:1 1 auto">
+              <h3>${m.pinned ? "📌 " : ""}${escapeHtml(m.title || "(제목 없음)")}</h3>
+              <div class="muted" style="white-space:pre-wrap">${escapeHtml((m.content||"").slice(0,500))}</div>
+              <div class="row meta" style="margin-top:6px">
+                <span>${m.tags.map(t=>`#${escapeHtml(t)}`).join(" ") || "태그 없음"}</span>
+                <span>작성: ${fmtTime(m.createdAt)}</span>
+                <span>수정: ${fmtTime(m.updatedAt)}</span>
+                <div class="tools">
+                  <button class="btn ghost" onclick="pinMemo('${m.id}', ${!m.pinned})">${m.pinned?"고정 해제":"고정"}</button>
+                  <button class="btn" onclick="editMemo('${m.id}')">편집</button>
+                  <button class="btn warn" onclick="delMemo('${m.id}')">삭제</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `).join("");
+      emptyEl.style.display = arr.length ? "none":"block";
+      renderTagFilter();
+    }
+
+    function escapeHtml(s){ return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+    // --- 액션 ----------------------------------------------------------------
+    function save() {
+      const title = titleEl.value.trim();
+      const content = contentEl.value.trim();
+      const tags = tagsEl.value.split(",").map(s=>s.trim()).filter(Boolean);
+      const pinned = !!pinnedEl.checked;
+
+      if (!title && !content) { alert("내용을 입력하세요."); return; }
+
+      const now = Date.now();
+      if (editingId) {
+        const m = memos.find(x=>x.id===editingId);
+        if (!m) return;
+        m.title=title; m.content=content; m.tags=tags; m.pinned=pinned; m.updatedAt=now;
+        editingId = null; editHint.style.display="none";
+      } else {
+        memos.unshift({ id: uid(), title, content, tags, pinned, createdAt: now, updatedAt: now });
+      }
+      persist(); resetForm(); renderList();
+    }
+
+    function resetForm() {
+      titleEl.value = ""; contentEl.value = ""; tagsEl.value = ""; pinnedEl.checked=false;
+      editingId = null; editHint.style.display="none";
+      titleEl.focus();
+    }
+
+    function editMemo(id){
+      const m = memos.find(x=>x.id===id); if(!m) return;
+      titleEl.value=m.title; contentEl.value=m.content; tagsEl.value=m.tags.join(", "); pinnedEl.checked=m.pinned;
+      editingId = id; editHint.style.display="block"; window.scrollTo({top:0,behavior:"smooth"});
+    }
+    function delMemo(id){
+      if(!confirm("정말 삭제할까요?")) return;
+      memos = memos.filter(m=>m.id!==id); persist(); renderList();
+      if (editingId===id) resetForm();
+    }
+    function pinMemo(id, to){
+      const m = memos.find(x=>x.id===id); if(!m) return;
+      m.pinned = !!to; m.updatedAt=Date.now(); persist(); renderList();
+    }
+
+    // 내보내기/가져오기
+    exportBtn.addEventListener("click", ()=>{
+      const blob = new Blob([JSON.stringify(memos,null,2)], {type:"application/json"});
+      const a = Object.assign(document.createElement("a"), {href:URL.createObjectURL(blob), download:"memos.json"});
+      a.click(); URL.revokeObjectURL(a.href);
+    });
+    importFile.addEventListener("change", async (e)=>{
+      const file = e.target.files?.[0]; if(!file) return;
+      try{
+        const text = await file.text();
+        const data = JSON.parse(text);
+        if(!Array.isArray(data)) throw new Error("형식 오류");
+        memos = data; persist(); renderList(); alert("가져오기 완료");
+      }catch(err){ alert("가져오기 실패: " + err.message); }
+      finally{ importFile.value=""; }
+    });
+
+    // 이벤트 연결
+    saveBtn.addEventListener("click", save);
+    resetBtn.addEventListener("click", resetForm);
+    [qEl, tagFilterEl, sortEl].forEach(el => el.addEventListener("input", renderList));
+    document.addEventListener("keydown", (e)=>{
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") save();
+      if (e.key === "/" && document.activeElement !== qEl) { e.preventDefault(); qEl.focus(); }
+    });
+
+    // 초기 렌더
+    renderList();
+  </script>
+</body>
+</html>
+"""
+path = "/mnt/data/index.html"
+with open(path, "w", encoding="utf-8") as f:
+    f.write(content)
+path
